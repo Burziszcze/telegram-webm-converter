@@ -91,46 +91,4 @@ If you have any questions or feedback, feel free to contact me at [buurzuum@gmai
 
 Make sure to update your code to read from the `config.toml` file. Here is an example of how you can modify your `main.go` to read the token from `config.toml`:
 
-```go
-package main
-
-import (
-	"log"
-	"github.com/BurntSushi/toml"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
-	"your_project_path/utils"
-)
-
-type Config struct {
-	Bot struct {
-		Token string `toml:"token"`
-	} `toml:"bot"`
-}
-
-func main() {
-	var config Config
-	if _, err := toml.DecodeFile("config.toml", &config); err != nil {
-		log.Fatalf("Error reading config file: %v", err)
-	}
-
-	bot, err := tgbotapi.NewBotAPI(config.Bot.Token)
-	if err != nil {
-		log.Fatalf("Error creating bot: %v", err)
-	}
-
-	converter := utils.NewWebmConverter(bot)
-
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-
-	updates, err := bot.GetUpdatesChan(u)
-	if err != nil {
-		log.Fatalf("Error getting updates: %v", err)
-	}
-
-	for update := range updates {
-		if update.Message != nil {
-			converter.HandleMessage(update.Message)
-		}
-	}
-}
+```
