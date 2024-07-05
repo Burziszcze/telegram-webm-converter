@@ -37,18 +37,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("Unable to create Telegram Bot API client: %v", err)
 	}
-	// initial log
 	log.Printf("Bot launched: %s", bot.Self.UserName)
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
-	// Utils
 	converter := utils.NewWebmConverter(bot)
-	// Bot Update
 	updates, err := bot.GetUpdatesChan(u)
 	if err != nil {
 		log.Fatalf("Unable to create update channel %v", err)
 	}
-	// Rozpocznij goroutine do monitorowania zmian w pliku konfiguracyjnym
 	go watchConfigFile(watcher)
 
 	for update := range updates {
@@ -76,7 +72,6 @@ func watchConfigFile(watcher *fsnotify.Watcher) {
 				return
 			}
 			if event.Op&fsnotify.Write == fsnotify.Write {
-				// Plik konfiguracyjny został zmieniony, więc wczytaj nową konfigurację
 				if err := loadConfig(); err != nil {
 					log.Printf("Error while reading changed configuration: %v", err)
 				}
