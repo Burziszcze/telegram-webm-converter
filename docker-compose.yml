@@ -1,0 +1,14 @@
+services:
+  urban:
+    image: telegram-webm-converter:latest
+    container_name: telegram-webm-converter
+    restart: unless-stopped
+    ports:
+      - 2137:2137
+    build:
+     context: .
+     dockerfile: ./Dockerfile
+    volumes:
+      - ./config.toml:/config/config.toml
+      - ./media:/media
+      - ./temp:/temp

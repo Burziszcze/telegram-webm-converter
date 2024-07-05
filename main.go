@@ -1,0 +1,92 @@
+package main
+
+import (
+	"log"
+
+	"github.com/BurntSushi/toml"
+	utils "github.com/Burziszcze/telegram-webm-converter/utils"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
+	"gopkg.in/fsnotify.v1"
+)
+
+type Config struct {
+	Bot BotConfig
+}
+
+type BotConfig struct {
+	Token string
+}
+
+var config Config
+
+func main() {
+	if err := loadConfig(); err != nil {
+		log.Fatalf("Error reading initial configuration: %v", err)
+	}
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Fatalf("BError initializing file monitor: %v", err)
+	}
+	bot, err := tgbotapi.NewBotAPI(config.Bot.Token)
+	bot.Debug = false
+	defer watcher.Close()
+
+	if err := watcher.Add("config.toml"); err != nil {
+		log.Fatalf("Error adding file to monitor: %v", err)
+	}
+	if err != nil {
+		log.Fatalf("Unable to create Telegram Bot API client: %v", err)
+	}
+	// initial log
+	log.Printf("Bot launched: %s", bot.Self.UserName)
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+	// Utils
+	converter := utils.NewWebmConverter(bot)
+	// Bot Update
+	updates, err := bot.GetUpdatesChan(u)
+	if err != nil {
+		log.Fatalf("Unable to create update channel %v", err)
+	}
+	// Rozpocznij goroutine do monitorowania zmian w pliku konfiguracyjnym
+	go watchConfigFile(watcher)
+
+	for update := range updates {
+		if update.Message == nil {
+			continue
+		}
+		converter.HandleMessage(update.Message)
+	}
+}
+
+func loadConfig() error {
+	_, err := toml.DecodeFile("config.toml", &config)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func watchConfigFile(watcher *fsnotify.Watcher) {
+	for {
+		select {
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return
+			}
+			if event.Op&fsnotify.Write == fsnotify.Write {
+				// Plik konfiguracyjny został zmieniony, więc wczytaj nową konfigurację
+				if err := loadConfig(); err != nil {
+					log.Printf("Error while reading changed configuration: %v", err)
+				}
+				log.Println("Updated configuration from file.")
+			}
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
+			log.Printf("File monitoring error: %v", err)
+		}
+	}
+}
