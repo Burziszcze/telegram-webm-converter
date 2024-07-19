@@ -44,47 +44,55 @@ func (s *Converter) HandleMessage(msg *tgbotapi.Message) {
 		fileURL = msg.Text
 	}
 	if fileURL != "" {
-		EnsureTempDir()
-		fileName := ""
-		if msg.Document != nil {
-			fileName = msg.Document.FileName
-		} else {
-			fileName = filepath.Base(fileURL)
-		}
-		localFileName := "./temp/" + fileName
-		out, err := os.Create(localFileName)
-		if err != nil {
-			log.Println("Error creating file:", err)
-			return
-		}
-		defer out.Close()
-		err = s.DownloadFile(fileURL, out)
-		if err != nil {
-			log.Println("Error downloading file:", err)
-			return
-		}
-		outputFile, err := ConvertWebmToMp4(localFileName)
-		log.Printf("%s conversion started...", fileName)
-		if err != nil {
-			log.Println("Error converting file:", err)
-			SendMessage(s.bot, msg.Chat.ID, fmt.Sprintf("Error converting file: %s", err))
-			return
-		}
-		SendVideo(s.bot, msg.Chat.ID, outputFile)
-		log.Printf("%s converted completed.", fileName)
-		dstDir := "./media/downloads"
-		err = MoveFile(outputFile, dstDir)
-		if err != nil {
-			log.Println("Error moving file:", err)
-			return
-		}
-		log.Printf("File %s has been moved to %s.", outputFile, dstDir)
-		err = os.Remove(localFileName)
-		if err != nil {
-			log.Printf("Error removing local file %s: %v", localFileName, err)
-		}
-		CleanupTempFiles()
+		go s.processFile(msg, fileURL)
 	}
+}
+
+func (s *Converter) processFile(msg *tgbotapi.Message, fileURL string) {
+	EnsureTempDir()
+	fileName := filepath.Base(fileURL)
+	localFileName := "./temp/" + fileName
+
+	// Download the file
+	out, err := os.Create(localFileName)
+	if err != nil {
+		log.Println("Error creating file:", err)
+		return
+	}
+	defer out.Close()
+
+	err = s.DownloadFile(fileURL, out)
+	if err != nil {
+		log.Println("Error downloading file:", err)
+		return
+	}
+
+	// Convert the file
+	outputFile, err := ConvertWebmToMp4(localFileName)
+	if err != nil {
+		log.Println("Error converting file:", err)
+		SendMessage(s.bot, msg.Chat.ID, fmt.Sprintf("Error converting file: %s", err))
+		return
+	}
+
+	// Send the converted video
+	SendVideo(s.bot, msg.Chat.ID, outputFile)
+	log.Printf("%s conversion completed.", fileName)
+
+	dstDir := "./media/downloads"
+	err = MoveFile(outputFile, dstDir)
+	if err != nil {
+		log.Println("Error moving file:", err)
+		return
+	}
+	log.Printf("File %s has been moved to %s.", outputFile, dstDir)
+
+	// Remove temporary files
+	err = os.Remove(localFileName)
+	if err != nil {
+		log.Printf("Error removing local file %s: %v", localFileName, err)
+	}
+	// CleanupTempFiles()
 }
 
 func (s *Converter) DownloadFile(url string, dest *os.File) error {
