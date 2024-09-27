@@ -10,11 +10,11 @@ import (
 )
 
 type Config struct {
-	Bot BotConfig
+	Telegram BotConfig
 }
 
 type BotConfig struct {
-	Token string
+	APIKey string
 }
 
 var config Config
@@ -27,8 +27,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("BError initializing file monitor: %v", err)
 	}
-	bot, err := tgbotapi.NewBotAPI(config.Bot.Token)
-	bot.Debug = false
+	bot, err := tgbotapi.NewBotAPI(config.Telegram.APIKey)
 	defer watcher.Close()
 
 	if err := watcher.Add("config.toml"); err != nil {

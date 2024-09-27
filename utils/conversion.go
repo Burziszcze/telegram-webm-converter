@@ -47,12 +47,10 @@ func (s *Converter) HandleMessage(msg *tgbotapi.Message) {
 		go s.processFile(msg, fileURL)
 	}
 }
-
 func (s *Converter) processFile(msg *tgbotapi.Message, fileURL string) {
 	EnsureTempDir()
 	fileName := filepath.Base(fileURL)
 	localFileName := "./temp/" + fileName
-
 	// Download the file
 	out, err := os.Create(localFileName)
 	if err != nil {
@@ -60,39 +58,83 @@ func (s *Converter) processFile(msg *tgbotapi.Message, fileURL string) {
 		return
 	}
 	defer out.Close()
-
 	err = s.DownloadFile(fileURL, out)
 	if err != nil {
 		log.Println("Error downloading file:", err)
+		DeleteFile(localFileName)
 		return
 	}
 
 	// Convert the file
 	outputFile, err := ConvertWebmToMp4(localFileName)
 	if err != nil {
-		log.Println("Error converting file:", err)
-		SendMessage(s.bot, msg.Chat.ID, fmt.Sprintf("Error converting file: %s", err))
+		if exitError, ok := err.(*exec.ExitError); ok && (exitError.ExitCode() == 187 || exitError.ExitCode() == 8) {
+			log.Printf("Error converting file with exit status %d, trying with pixel adjustment or alternative settings", exitError.ExitCode())
+			outputFile, err = ConvertWebmToMp4WithPixel(localFileName)
+			if err != nil {
+				log.Println("Error converting file with pixel adjustment or alternative settings:", err)
+				SendMessage(s.bot, msg.Chat.ID, fmt.Sprintf("Error converting file: %s", err))
+				DeleteFile(localFileName)
+				DeleteFile(outputFile)
+				return
+			}
+		} else {
+			log.Println("Error converting file:", err)
+			SendMessage(s.bot, msg.Chat.ID, fmt.Sprintf("Error converting file: %s", err))
+			DeleteFile(localFileName)
+			DeleteFile(outputFile)
+			return
+		}
+	}
+
+	// Check if the output file is non-empty
+	if fileInfo, err := os.Stat(outputFile); err != nil || fileInfo.Size() == 0 {
+		log.Println("Converted file is empty or does not exist.")
+		SendMessage(s.bot, msg.Chat.ID, "The converted file is empty or could not be created.")
+		DeleteFile(localFileName)
+		DeleteFile(outputFile)
 		return
 	}
 
 	// Send the converted video
-	SendVideo(s.bot, msg.Chat.ID, outputFile)
-	log.Printf("%s conversion completed.", fileName)
+	err = SendVideo(s.bot, msg.Chat.ID, outputFile)
+	if err != nil {
+		log.Printf("Error while sending video: %v", err)
+		DeleteFile(localFileName)
+		DeleteFile(outputFile)
+	}
 
+	log.Printf("%s conversion completed.", fileName)
 	dstDir := "./media/downloads"
 	err = MoveFile(outputFile, dstDir)
 	if err != nil {
 		log.Println("Error moving file:", err)
+		DeleteFile(localFileName)
+		DeleteFile(outputFile)
 		return
 	}
 	log.Printf("File %s has been moved to %s.", outputFile, dstDir)
+	DeleteFile(localFileName)
+}
 
-	// Remove temporary files
-	err = os.Remove(localFileName)
+func DeleteFile(filePath string) error {
+	file, err := os.Open(filePath)
 	if err != nil {
-		log.Printf("Error removing local file %s: %v", localFileName, err)
+		return err
 	}
-	// CleanupTempFiles()
+	defer file.Close()
+	err = file.Close()
+	if err != nil {
+		return err
+	}
+	// Usuń plik
+	err = os.Remove(filePath)
+	if err != nil {
+		return err
+	}
+	log.Printf("Temporary files have been cleaned up.")
+
+	return nil
 }
 
 func (s *Converter) DownloadFile(url string, dest *os.File) error {
@@ -113,9 +155,29 @@ func (s *Converter) DownloadFile(url string, dest *os.File) error {
 
 func ConvertWebmToMp4(inputFile string) (string, error) {
 	outputFile := strings.TrimSuffix(inputFile, ".webm") + ".mp4"
-	cmd := exec.Command("ffmpeg", "-i", inputFile, outputFile)
-	err := cmd.Run()
+	cmd := exec.Command("ffmpeg", "-loglevel", "error", "-i", inputFile, outputFile)
 
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	if err != nil {
+		log.Printf("ffmpeg error: %s", stderr.String())
+	}
+	return outputFile, err
+}
+
+func ConvertWebmToMp4WithPixel(inputFile string) (string, error) {
+	outputFile := strings.TrimSuffix(inputFile, ".webm") + ".mp4"
+	cmd := exec.Command("ffmpeg", "-i", inputFile, "-vf", "pad='width=ceil(iw/2)*2:height=ceil(ih/2)*2'", outputFile)
+
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	if err != nil {
+		log.Printf("ffmpeg error: %s", stderr.String())
+	}
 	return outputFile, err
 }
 
