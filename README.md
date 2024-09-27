@@ -37,8 +37,8 @@ This repository contains a Telegram bot that converts WebM files to MP4 format. 
    - Create a `config.toml` file in the root directory and add your bot token:
 
      ```toml
-     [bot]
-     token = "your_telegram_bot_token"
+     [Telegram]
+     APIKey = "your_telegram_bot_token"
      ```
 
 5. **Run the bot**:
